@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Oct  4 20:59:25 2021
+/media/sf_EC601/project2-327515-b0d7fc69f076.json
+@author: ece
+"""
+
+import requests
+import json
+from time import sleep
+from google.cloud import language_v1
+import matplotlib.pyplot as plt
+import numpy as np
+
+BEARER_TOKEN = ""
+META_FILE = "meta_file1.txt"
+FILE = 'response01.json'
+
+SEARCH_URL = "https://api.twitter.com/2/tweets/search/recent"
+
+def create_headers(bearer_token):
+    headers = {"Authorization": "Bearer {}".format(bearer_token)}
+    return headers
+
+def connect_to_endpoint(url, headers, params):
+    response = requests.request("GET", url, headers=headers,
+                                params=params)
+    if response.status_code != 200:
+        raise Exception(response.status_code, response.text)
+    return response.json()
+
+def get_tweets(queryword):
+    #modified code from https://twittercommunity.com/t/what-would-be-the-optimal-way-of-
+    #storing-tweets-users-location-data-for-a-large-number-of-tweets/150796/2
+    query_params = {'query': '(' + queryword + ' -is:retweet)'}
+    headers = create_headers(BEARER_TOKEN)
+    json_response = connect_to_endpoint(SEARCH_URL, headers,
+                                        query_params)
+
+    results = str()
+    results = results + json.dumps(json_response["data"])[1:-1]
+
+    print(json_response["meta"]["oldest_id"] +
+          "\n" + json_response["meta"]["newest_id"] +
+          "\n" + json_response["meta"]["next_token"])
+
+    counter = 0
+    tweets_counter = 0
+    tweets_counter += json_response["meta"]["result_count"]
+
+    while json_response["meta"]["next_token"]:
+        sleep(2)
+        query_params["next_token"] = json_response["meta"]["next_token"]
+        json_response = connect_to_endpoint(SEARCH_URL, headers,
+                                            query_params)
+
+        results = results + "," + json.dumps(json_response["data"])[1:-1]
+        try: 
+            print(json_response["meta"]["oldest_id"] +
+                "\n" + json_response["meta"]["newest_id"] +
+                "\n" + json_response["meta"]["next_token"])
+        
+            counter += 1
+            tweets_counter += json_response["meta"]["result_count"]
+        except: 
+            break 
+        
+    return(results)
+
+def tweet_list(queryword):
+    results = get_tweets(queryword)
+    list1 = results.split('"')
+    textresults = []
+    for i in range(len(list1)):
+        if list1[i] == 'text':
+            textresults.append(list1[i+2])
+    return(textresults)
+
+def sentiment(textresults, queryword):
+    #modified from https://cloud.google.com/natural-language/docs/analyzing-entities
+    client = language_v1.LanguageServiceClient.from_service_account_json("")
+    total = []
+    ii = -1 
+    
+    for i in range(len(textresults)):
+    
+        text_content = textresults[i]
+
+        type_ = language_v1.Document.Type.PLAIN_TEXT
+
+        language = "en"
+        document = {"content": text_content, "type_": type_, "language": language}
+    
+        # Available values: NONE, UTF8, UTF16, UTF32
+        encoding_type = language_v1.EncodingType.UTF8
+    
+        response = client.analyze_entity_sentiment(request = {'document': document, 'encoding_type': encoding_type})
+        
+        for entity in response.entities:
+            if queryword in entity.name:
+                ii = ii + 1
+                sentiment = entity.sentiment
+                total.append([ii, float(sentiment.score),float(sentiment.magnitude), float(sentiment.score)*float(sentiment.magnitude), textresults[i]])
+            else: 
+                pass
+    
+    return total
+
+#%%%%%%%
+
+name = "Michelle Wu"
+WuTweets = tweet_list(name) 
+WuSentiment = sentiment(WuTweets, name)
+
+#%%%%
+name = "Essaibi"
+EssaibiTweets = tweet_list(name) 
+EssaibiSentiment = sentiment(EssaibiTweets, name)
+
+#%%%%%%%
+EsScore = [row[1] for row in EssaibiSentiment]
+EsMaxScore = max(EsScore)
+EsMinScore = min(EsScore)
+EsMax = EssaibiSentiment [EsScore.index(EsMaxScore)]
+print(EsMax)
+EsMin = EssaibiSentiment [EsScore.index(EsMinScore)]
+print(EsMin)
+#%%%%%%%
+WuScore = [row[1] for row in WuSentiment]
+WuMaxScore = max(WuScore)
+WuMinScore = min(WuScore)
+WuMax = WuSentiment [WuScore.index(WuMaxScore)]
+print(WuMax)
+WuMin = WuSentiment [WuScore.index(WuMinScore)]
+print(WuMin)
+#%%%%%%%
+
+x = [row[1] for row in EssaibiSentiment]
+plt.title('Essaibi Score')
+plt.hist(x, density=True, bins=20)  # density=False would make counts
+plt.ylabel('Frequency')
+plt.xlabel('sentiment');
+plt.show()
+
+x = [row[2] for row in EssaibiSentiment]
+plt.title('Essaibi Magnitude')
+plt.hist(x, density=True, bins=20)  # density=False would make counts
+plt.ylabel('Frequency')
+plt.xlabel('sentiment');
+plt.show()
+
+x = [row[3] for row in EssaibiSentiment]
+plt.title('Essaibi Weighted Score')
+plt.hist(x, density=True, bins=20)  # density=False would make counts
+plt.ylabel('Frequency')
+plt.xlabel('sentiment');
+plt.show()
+
+#%%%%%%%
+
+x = [row[1] for row in WuSentiment]
+
+plt.hist(x, density=True, bins=20)  # density=False would make counts
+plt.title('Wu Score')
+plt.ylabel('Frequency')
+plt.xlabel('sentiment')
+plt.show()
+
+x = [row[2] for row in WuSentiment]
+
+plt.hist(x, density=True, bins=20)  # density=False would make counts
+plt.title('Wu Magnitude')
+plt.ylabel('Frequency')
+plt.xlabel('sentiment')
+plt.show()
+
+x = [row[3] for row in WuSentiment]
+
+plt.hist(x, density=True, bins=20)  # density=False would make counts
+plt.title('Wu Weighted Score')
+plt.ylabel('Frequency')
+plt.xlabel('sentiment')
+plt.show()
+#%%%%
+print(sum([row[1] for row in WuSentiment])/len([row[1] for row in WuSentiment]))
+print(sum([row[3] for row in WuSentiment])/len([row[3] for row in WuSentiment]))
+
+#%%%%
+print(sum([row[1] for row in EssaibiSentiment])/len([row[1] for row in EssaibiSentiment]))
+print(sum([row[3] for row in EssaibiSentiment])/len([row[3] for row in EssaibiSentiment]))
